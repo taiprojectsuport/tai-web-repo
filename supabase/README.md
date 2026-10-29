@@ -9,7 +9,7 @@ deve ser rodado em produção sem revisão.**
 | Pasta | O que é |
 |---|---|
 | `migrations/` | Histórico do schema. Serve para criar um banco **novo** igual à produção (branch de teste, ambiente local). |
-| `migrations-pendentes/` | Mudanças preparadas e **não aplicadas** (hoje: RLS por empresa). Cada uma tem seu LEIA-ME. |
+| `migrations-pendentes/` | Mudanças preparadas e **não aplicadas** (hoje: RLS por empresa e RLS dos alertas). Ver o LEIA-ME de lá. |
 | `seed.sql` | Dados fictícios para um branch de teste vazio. Nunca para produção. |
 
 ### `migrations/`

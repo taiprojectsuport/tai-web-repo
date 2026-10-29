@@ -36,6 +36,8 @@ export interface AlertContact {
 export interface AlertEvent {
   id: string;
   triggeredAt: string;
+  /** Contato avisado: o job grava um alerta por contato. So digitos. */
+  contactPhone: string;
   machineName: string;
   sectorName: string;
   variableName: string;

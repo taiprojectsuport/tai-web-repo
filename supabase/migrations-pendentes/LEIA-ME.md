@@ -261,3 +261,30 @@ pouco para concluir como ele se comporta com Admin, Operador, Vendedor e Cliente
   para tirar o UPDATE de `Maquinas` do Operador (e resolver I6).
 - Edge Function de desativar e remover acesso; checagem de Status em `create-auth-user`.
 - Gerar os tipos do banco (`supabase gen types`) e tipar o cliente (I16).
+
+---
+
+## 9. Alertas: `20261029_alertas_rls_e_check_thresholds.sql` (pendente)
+
+Fecha o item "`alert_events`/`alert_contacts` abertos para anon" (seções 2 e 7) e corrige o job.
+**Aplicar depois** de `20261015_rls_isolamento_por_empresa.sql`: usa as funções `tai_private.*`.
+
+| Tabela | SELECT | INSERT / UPDATE / DELETE |
+|---|---|---|
+| `alert_contacts` | Master; Admin da própria empresa | idem |
+| `alert_events` | Master; qualquer usuário ativo da empresa da variável | ninguém pela API (o job grava como `postgres`) |
+
+`check_thresholds` passa a ignorar variável com `number_value` NULL ou `type = 'bool'`.
+Antes, `NULL >= min_val` dava NULL e o job disparava alertas para essas variáveis.
+
+**Conferir antes de aplicar:**
+1. O cenário do **Make** atualiza `alert_events.status` pela API? Com qual chave? Com a anon
+   key, essa escrita passa a ser negada (com a service_role continua funcionando).
+2. O **legado** lê ou grava `alert_contacts`/`alert_events` com usuário não-Master?
+3. Em produção, as variáveis booleanas usam mesmo `type = 'bool'`?
+   (`select type, count(*) from variables group by 1;`)
+
+**Teste no branch:** anon lê `[]` nas duas tabelas; admin-a lê só os contatos da A e não
+consegue alterar contato da B (0 linhas); operador-a não lê contatos; o histórico de
+alertas do tai-web mostra só os eventos da própria empresa; uma variável float com limites
+e `number_value` NULL não gera `alert_events` depois do tempo de tolerância.

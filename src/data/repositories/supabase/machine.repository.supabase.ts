@@ -10,6 +10,7 @@ import type {
   MachineVariableType,
 } from "@/domain/entities/machine";
 import { AffectedSegment, MachineStatus } from "@/domain/types/enums";
+import { formatNumberInput, parseOptionalNumber } from "@/domain/numbers";
 import { supabase } from "@/lib/supabase-client";
 import type { TablesUpdate } from "@/data/repositories/supabase/database.types";
 import {
@@ -228,7 +229,7 @@ function toCustomVariable(row: VariableRow): MachineCustomVariable {
     label: row.name ?? "",
     type,
     unit: row.grandeza ?? undefined,
-    value: type === "bool" ? String(!!row.bool_value) : String(row.number_value ?? "0"),
+    value: type === "bool" ? String(!!row.bool_value) : formatNumberInput(row.number_value ?? 0),
     visible: true,
   };
 }
@@ -338,9 +339,8 @@ function toMachine(row: MaquinaRow, extras: Extras): Machine {
 
 /** `number_value` e numerico no banco; o formulario guarda texto. Vazio vira NULL, texto nao numerico e recusado. */
 function numberValueToDb(variable: MachineCustomVariable): number | null {
-  const raw = variable.value.trim().replace(",", ".");
-  if (raw === "") return null;
-  const parsed = Number(raw);
+  const parsed = parseOptionalNumber(variable.value);
+  if (parsed === null) return null;
   if (!Number.isFinite(parsed)) throw new Error(`Valor inválido para a variável "${variable.label}": use um número.`);
   return parsed;
 }
@@ -361,6 +361,9 @@ async function syncCustomVariables(machineId: number, customVariables: MachineCu
       grandeza: variable.unit ?? null,
       number_value: variable.type === "bool" ? null : numberValueToDb(variable),
       bool_value: variable.type === "bool" ? variable.value === "true" : null,
+      // Booleana nao tem faixa numerica: sem limites o job check_thresholds ignora a variavel
+      // (com number_value NULL ele a trataria como fora da faixa e dispararia alertas).
+      ...(variable.type === "bool" ? { min_val: null, max_val: null } : {}),
     };
     if (isExisting) {
       incomingIds.add(numericId);

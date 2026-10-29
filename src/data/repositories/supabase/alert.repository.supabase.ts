@@ -24,11 +24,25 @@ type VariableRow = Pick<
 type ContactRow = Pick<Tables<"alert_contacts">, "id" | "empresa_id" | "nome" | "telefone" | "envio">;
 type EventRow = Pick<
   Tables<"alert_events">,
-  "id" | "triggered_at" | "maquina" | "setor" | "variable_name" | "value_at_trigger" | "grandeza" | "min_val" | "max_val" | "level" | "status" | "envio"
+  | "id"
+  | "triggered_at"
+  | "empresa_telefone"
+  | "maquina"
+  | "setor"
+  | "variable_name"
+  | "value_at_trigger"
+  | "grandeza"
+  | "min_val"
+  | "max_val"
+  | "level"
+  | "status"
+  | "envio"
 >;
 
 const CONTACT_COLUMNS = "id, empresa_id, nome, telefone, envio";
-const EVENT_COLUMNS = "id, triggered_at, maquina, setor, variable_name, value_at_trigger, grandeza, min_val, max_val, level, status, envio";
+// alert_events nao tem coluna de empresa: o join obrigatorio (!inner) com variavel -> maquina filtra pela empresa.
+const EVENT_SELECT =
+  "id, triggered_at, empresa_telefone, maquina, setor, variable_name, value_at_trigger, grandeza, min_val, max_val, level, status, envio, variables!inner(Maquinas!inner(idRef))";
 
 function toContact(row: ContactRow): AlertContact {
   return {
@@ -44,6 +58,7 @@ function toEvent(row: EventRow): AlertEvent {
   return {
     id: row.id,
     triggeredAt: row.triggered_at,
+    contactPhone: phoneDigits(row.empresa_telefone ?? ""),
     machineName: row.maquina ?? "",
     sectorName: row.setor ?? "",
     variableName: row.variable_name ?? "",
@@ -108,22 +123,25 @@ export class SupabaseAlertRepository implements AlertRepository {
       .sort((a, b) => a.machineName.localeCompare(b.machineName) || a.variableName.localeCompare(b.variableName));
   }
 
-  async updateRule(variableId: string, data: AlertRuleUpdate): Promise<void> {
-    const { error } = await supabase
+  async updateRule(variableId: string, rule: AlertRuleUpdate): Promise<void> {
+    const { data, error } = await supabase
       .from("variables")
       .update({
-        min_val: data.min,
-        max_val: data.max,
-        timeout_min: data.timeoutMinutes,
-        level: LEVEL_TO_DB[data.level],
+        min_val: rule.min,
+        max_val: rule.max,
+        timeout_min: rule.timeoutMinutes,
+        level: LEVEL_TO_DB[rule.level],
         // Com a regra nova, a contagem de alertas recomeca do zero.
         alert_count: 0,
         last_alert_at: null,
         out_of_range_since: null,
         back_in_range_since: null,
       })
-      .eq("id", Number(variableId));
+      .eq("id", Number(variableId))
+      .select("id");
     if (error) throw new Error(error.message);
+    // Sem erro e sem linha: a variavel foi apagada ou o usuario nao pode altera-la (RLS).
+    if (!data?.length) throw new Error("A variável não foi encontrada ou você não tem permissão para alterá-la.");
   }
 
   async listContacts(companyId: string): Promise<AlertContact[]> {
@@ -158,21 +176,17 @@ export class SupabaseAlertRepository implements AlertRepository {
   }
 
   async removeContact(id: string): Promise<void> {
-    const { error } = await supabase.from("alert_contacts").delete().eq("id", id);
+    const { data, error } = await supabase.from("alert_contacts").delete().eq("id", id).select("id");
     if (error) throw new Error(error.message);
+    if (!data?.length) throw new Error("O contato não foi encontrado ou você não tem permissão para removê-lo.");
   }
 
   async listEvents(companyId: string, page: number, pageSize: number): Promise<PagedResult<AlertEvent>> {
-    // alert_events nao tem coluna de empresa: filtra pelas variaveis das maquinas da empresa.
-    const machines = await listCompanyMachines(companyId);
-    const variableIds = (await listVariables(machines.map((m) => m.id))).map((v) => v.id);
-    if (variableIds.length === 0) return { items: [], total: 0, page, pageSize };
-
     const start = (page - 1) * pageSize;
     const { data, error, count } = await supabase
       .from("alert_events")
-      .select(EVENT_COLUMNS, { count: "exact" })
-      .in("variable_id", variableIds)
+      .select(EVENT_SELECT, { count: "exact" })
+      .eq("variables.Maquinas.idRef", companyId)
       .order("triggered_at", { ascending: false })
       .order("id", { ascending: false })
       .range(start, start + pageSize - 1);

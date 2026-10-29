@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { isValidPhone, parseOptionalNumber } from "@/domain/alerts";
+import { isValidPhone } from "@/domain/alerts";
+import { parseOptionalNumber } from "@/domain/numbers";
 
 /** Campos numericos ficam como texto no formulario e sao convertidos ao salvar (ver parseOptionalNumber). */
 export const alertRuleSchema = z

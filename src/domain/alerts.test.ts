@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { effectiveLevel, formatPhone, formatRange, isOutOfRange, isValidPhone, parseOptionalNumber, phoneDigits } from "@/domain/alerts";
+import { effectiveLevel, formatPhone, formatRange, isOutOfRange, isValidPhone, maskPhone, phoneDigits } from "@/domain/alerts";
+import { formatNumberInput, parseOptionalNumber } from "@/domain/numbers";
 import { alertContactSchema, alertRuleSchema } from "@/domain/schemas/alert.schema";
 
 describe("telefone", () => {
@@ -17,6 +18,11 @@ describe("telefone", () => {
     expect(formatPhone("2133334444")).toBe("(21) 3333-4444");
     expect(formatPhone("123")).toBe("123");
   });
+
+  it("mascara o telefone para quem nao gerencia", () => {
+    expect(maskPhone("21999998888")).toBe("(21) •••••-8888");
+    expect(maskPhone("2133334444")).toBe("(21) ••••-4444");
+  });
 });
 
 describe("faixa", () => {
@@ -24,6 +30,19 @@ describe("faixa", () => {
     expect(parseOptionalNumber("")).toBeNull();
     expect(parseOptionalNumber(" 4,5 ")).toBe(4.5);
     expect(parseOptionalNumber("abc")).toBeNaN();
+  });
+
+  it("le numeros no padrao brasileiro", () => {
+    expect(parseOptionalNumber("1.000")).toBe(1000);
+    expect(parseOptionalNumber("1.234,5")).toBe(1234.5);
+    expect(parseOptionalNumber("-2.500.000")).toBe(-2500000);
+    expect(parseOptionalNumber("4.5")).toBe(4.5);
+    expect(parseOptionalNumber("0.500")).toBe(0.5);
+    expect(parseOptionalNumber("1,2,3")).toBeNaN();
+  });
+
+  it("valor do banco volta igual depois de passar pelo formulario", () => {
+    for (const n of [12.345, 1000, 0.5, -3.25, 7]) expect(parseOptionalNumber(formatNumberInput(n))).toBe(n);
   });
 
   it("detecta valor fora da faixa", () => {
