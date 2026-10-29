@@ -11,8 +11,11 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { Pagination } from "@/components/ui/pagination";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { useAuth } from "@/features/auth/use-auth";
+import { useCompanies } from "@/features/companies/queries";
 import { canManageCompany } from "@/domain/permissions";
+import { UserRole } from "@/domain/types/enums";
 import { useDisclosure } from "@/hooks/use-disclosure";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { toast } from "@/hooks/use-toast";
@@ -26,7 +29,7 @@ import {
 } from "@/features/alerts/queries";
 import { AlertRuleDialog } from "@/features/alerts/components/alert-rule-dialog";
 import { AlertContactDialog } from "@/features/alerts/components/alert-contact-dialog";
-import { alertChannelLabels, alertLevelLabels, effectiveLevel, formatPhone, formatRange, isOutOfRange } from "@/domain/alerts";
+import { alertChannelLabels, alertLevelLabels, effectiveLevel, formatPhone, formatRange, isOutOfRange, maskPhone } from "@/domain/alerts";
 import type { AlertContact, AlertEventStatus, AlertLevel, AlertRule } from "@/domain/entities/alert";
 import type { AlertRuleUpdate } from "@/data/contracts/alert.repository";
 import type { AlertContactFormValues } from "@/domain/schemas/alert.schema";
@@ -37,8 +40,6 @@ const EVENTS_PAGE_SIZE = 20;
 const levelTone: Record<AlertLevel, "neutral" | "warning" | "danger"> = { off: "neutral", yellow: "warning", red: "danger" };
 const statusLabel: Record<AlertEventStatus, string> = { pending: "Pendente", sent: "Enviado", failed: "Falhou" };
 const statusTone: Record<AlertEventStatus, "neutral" | "success" | "danger"> = { pending: "neutral", sent: "success", failed: "danger" };
-
-const errorMessage = (err: unknown) => (err instanceof Error ? err.message : undefined);
 
 function formatDateTime(iso: string): string {
   try {
@@ -51,9 +52,17 @@ function formatDateTime(iso: string): string {
 export function AlertsPage() {
   usePageTitle("Alertas");
   const { user } = useAuth();
-  const companyId = user?.companyId ?? "";
+  const isMaster = user?.role === UserRole.MASTER;
   const canManage = canManageCompany(user?.role);
   const [tab, setTab] = useState<Tab>("rules");
+  // Contatos e limites sao por empresa: o Master escolhe qual empresa configurar.
+  const [selectedCompanyId, setSelectedCompanyId] = useState("");
+  const companiesQuery = useCompanies("");
+  const companyOptions = useMemo(
+    () => (isMaster ? (companiesQuery.data ?? []).map((c) => ({ value: c.id, label: c.name })) : []),
+    [isMaster, companiesQuery.data],
+  );
+  const companyId = isMaster ? selectedCompanyId || user?.companyId || "" : (user?.companyId ?? "");
 
   const tabs: { id: Tab; label: string }[] = [
     { id: "rules", label: "Limites" },
@@ -72,6 +81,20 @@ export function AlertsPage() {
         </p>
       </div>
 
+      {isMaster && (
+        <div className="max-w-sm">
+          <label htmlFor="alertas-empresa" className="label-caps mb-1.5 block">Empresa</label>
+          <SearchableSelect
+            id="alertas-empresa"
+            options={companyOptions}
+            value={companyId}
+            onChange={setSelectedCompanyId}
+            placeholder="Selecione a empresa"
+            className="font-bold"
+          />
+        </div>
+      )}
+
       <div className="flex gap-2" role="tablist">
         {tabs.map((t) => (
           <button
@@ -89,9 +112,10 @@ export function AlertsPage() {
         ))}
       </div>
 
-      {tab === "rules" && <RulesTab companyId={companyId} canManage={canManage} />}
-      {tab === "contacts" && canManage && <ContactsTab companyId={companyId} />}
-      {tab === "history" && <HistoryTab companyId={companyId} />}
+      {/* key: ao trocar de empresa (Master), a pagina do historico e o dialogo abertos recomecam. */}
+      {tab === "rules" && <RulesTab key={companyId} companyId={companyId} canManage={canManage} />}
+      {tab === "contacts" && canManage && <ContactsTab key={companyId} companyId={companyId} />}
+      {tab === "history" && <HistoryTab key={companyId} companyId={companyId} canManage={canManage} />}
     </div>
   );
 }
@@ -119,12 +143,12 @@ function RulesTab({ companyId, canManage }: { companyId: string; canManage: bool
       toast({ title: "Alerta salvo.", variant: "success" });
       ruleDialog.close();
     } catch (err) {
-      toast({ title: "Não foi possível salvar o alerta.", description: errorMessage(err), variant: "error" });
+      toast({ title: "Não foi possível salvar o alerta.", description: err instanceof Error ? err.message : undefined, variant: "error" });
     }
   };
 
   if (rulesQuery.isLoading) return <Skeleton className="h-64 w-full" />;
-  if (rulesQuery.isError) return <ErrorState message={errorMessage(rulesQuery.error) ?? "Erro desconhecido."} onRetry={() => rulesQuery.refetch()} />;
+  if (rulesQuery.isError) return <ErrorState message={rulesQuery.error instanceof Error ? rulesQuery.error.message : "Erro desconhecido."} onRetry={() => rulesQuery.refetch()} />;
   if (byMachine.length === 0) {
     return (
       <Card>
@@ -217,7 +241,7 @@ function ContactsTab({ companyId }: { companyId: string }) {
       toast({ title: editing ? "Contato atualizado." : "Contato cadastrado.", variant: "success" });
       contactDialog.close();
     } catch (err) {
-      toast({ title: "Não foi possível salvar o contato.", description: errorMessage(err), variant: "error" });
+      toast({ title: "Não foi possível salvar o contato.", description: err instanceof Error ? err.message : undefined, variant: "error" });
     }
   };
 
@@ -228,7 +252,7 @@ function ContactsTab({ companyId }: { companyId: string }) {
       toast({ title: "Contato removido.", variant: "success" });
       removeDialog.close();
     } catch (err) {
-      toast({ title: "Não foi possível remover o contato.", description: errorMessage(err), variant: "error" });
+      toast({ title: "Não foi possível remover o contato.", description: err instanceof Error ? err.message : undefined, variant: "error" });
     }
   };
 
@@ -250,7 +274,7 @@ function ContactsTab({ companyId }: { companyId: string }) {
       <div className="space-y-3 p-4">
         {contactsQuery.isLoading && Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-16 w-full rounded-2xl" />)}
         {contactsQuery.isError && (
-          <ErrorState message={errorMessage(contactsQuery.error) ?? "Erro desconhecido."} onRetry={() => contactsQuery.refetch()} />
+          <ErrorState message={contactsQuery.error instanceof Error ? contactsQuery.error.message : "Erro desconhecido."} onRetry={() => contactsQuery.refetch()} />
         )}
         {contactsQuery.isSuccess && contactsQuery.data.length === 0 && (
           <EmptyState
@@ -318,13 +342,13 @@ function ContactsTab({ companyId }: { companyId: string }) {
   );
 }
 
-function HistoryTab({ companyId }: { companyId: string }) {
+function HistoryTab({ companyId, canManage }: { companyId: string; canManage: boolean }) {
   const [page, setPage] = useState(1);
   const eventsQuery = useAlertEvents(companyId, page, EVENTS_PAGE_SIZE);
   const events = eventsQuery.data?.items ?? [];
 
   if (eventsQuery.isLoading) return <Skeleton className="h-64 w-full" />;
-  if (eventsQuery.isError) return <ErrorState message={errorMessage(eventsQuery.error) ?? "Erro desconhecido."} onRetry={() => eventsQuery.refetch()} />;
+  if (eventsQuery.isError) return <ErrorState message={eventsQuery.error instanceof Error ? eventsQuery.error.message : "Erro desconhecido."} onRetry={() => eventsQuery.refetch()} />;
 
   return (
     <Card className="overflow-hidden">
@@ -341,6 +365,7 @@ function HistoryTab({ companyId }: { companyId: string }) {
                 <th className="px-4 py-3">Valor</th>
                 <th className="px-4 py-3">Faixa</th>
                 <th className="px-4 py-3">Nível</th>
+                <th className="px-4 py-3">Contato</th>
                 <th className="px-4 py-3">Envio</th>
               </tr>
             </thead>
@@ -360,6 +385,10 @@ function HistoryTab({ companyId }: { companyId: string }) {
                   <td className="whitespace-nowrap px-4 py-3 text-muted">{formatRange(event.min, event.max, event.unit)}</td>
                   <td className="px-4 py-3">
                     <Badge tone={levelTone[event.level]}>{alertLevelLabels[event.level]}</Badge>
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3">
+                    {/* O job grava um alerta por contato: sem esta coluna as linhas pareceriam repetidas. */}
+                    {event.contactPhone ? (canManage ? formatPhone(event.contactPhone) : maskPhone(event.contactPhone)) : "-"}
                   </td>
                   <td className="px-4 py-3">
                     <Badge tone={statusTone[event.status]}>{statusLabel[event.status]}</Badge>

@@ -12,11 +12,11 @@ export function useAlertRules(companyId: string) {
   });
 }
 
-export function useAlertContacts(companyId: string, enabled = true) {
+export function useAlertContacts(companyId: string) {
   return useQuery({
     queryKey: [KEY, "contacts", companyId],
     queryFn: () => repositories.alerts.listContacts(companyId),
-    enabled: enabled && !!companyId,
+    enabled: !!companyId,
   });
 }
 

@@ -46,11 +46,11 @@ export function formatPhone(input: string): string {
   return input.trim();
 }
 
-/** Campo numerico opcional do formulario: vazio vira null, virgula vira ponto, texto invalido vira NaN. */
-export function parseOptionalNumber(input: string): number | null {
-  const raw = input.trim().replace(",", ".");
-  if (raw === "") return null;
-  return Number(raw);
+/** "21999998888" -> "(21) •••••-8888": para quem nao gerencia a empresa e nao ve os telefones. */
+export function maskPhone(input: string): string {
+  const d = phoneDigits(input);
+  if (d.length < 6) return "•••";
+  return `(${d.slice(0, 2)}) ${"•".repeat(d.length - 6)}-${d.slice(-4)}`;
 }
 
 /** O valor atual esta fora da faixa configurada? (sem limites ou sem valor = nao esta) */

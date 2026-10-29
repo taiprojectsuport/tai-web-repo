@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { FieldError, FieldLabel, Input } from "@/components/ui/input";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { alertRuleSchema, type AlertRuleFormValues } from "@/domain/schemas/alert.schema";
-import { alertLevelHints, alertLevelLabels, parseOptionalNumber } from "@/domain/alerts";
+import { alertLevelHints, alertLevelLabels, effectiveLevel } from "@/domain/alerts";
+import { formatNumberInput, parseOptionalNumber } from "@/domain/numbers";
 import type { AlertRuleUpdate } from "@/data/contracts/alert.repository";
 import type { AlertLevel, AlertRule } from "@/domain/entities/alert";
 
@@ -17,10 +18,11 @@ const levelOptions = (Object.keys(alertLevelLabels) as AlertLevel[]).map((level)
 
 function toFormValues(rule: AlertRule | null): AlertRuleFormValues {
   return {
-    min: rule?.min != null ? String(rule.min) : "",
-    max: rule?.max != null ? String(rule.max) : "",
+    min: rule?.min != null ? formatNumberInput(rule.min) : "",
+    max: rule?.max != null ? formatNumberInput(rule.max) : "",
     timeoutMinutes: rule?.timeoutMinutes ?? 1,
-    level: rule?.level ?? "off",
+    // Mesmo nivel do card: sem limites o nivel gravado (padrao 'amarela') nao vale.
+    level: rule ? effectiveLevel(rule) : "off",
   };
 }
 
